@@ -1,0 +1,4 @@
+name: PillarsOfFortune
+version: '${project.version}'
+main: me.skinnynoonie.toweroffortune.PillarsOfFortune
+api-version: '1.20'
