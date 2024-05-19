@@ -9,6 +9,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.inventory.ItemStack;
@@ -34,16 +35,18 @@ public final class StandardPillarsOfFortuneGame implements PillarsOfFortuneGame 
     private boolean started;
     private boolean ended;
 
-    private final UUID gameWorldId;
+    private final World gameWorld;
     private final List<Location> spawnLocations;
+    private final Location spectatorSpawn;
 
     private final List<Consumer<PillarsOfFortuneGame>> onEndListeners;
 
     public StandardPillarsOfFortuneGame(
             PillarsOfFortune pillarsOfFortune,
             Set<UUID> players,
-            UUID gameWorldId,
-            List<Location> spawnLocations
+            World gameWorld,
+            List<Location> spawnLocations,
+            Location spectatorSpawn
     ) {
         this.pillarsOfFortune = pillarsOfFortune;
         this.eventBus = new BukkitEventBus(pillarsOfFortune);
@@ -54,8 +57,9 @@ public final class StandardPillarsOfFortuneGame implements PillarsOfFortuneGame 
         this.started = false;
         this.ended = false;
 
-        this.gameWorldId = gameWorldId;
+        this.gameWorld = gameWorld;
         this.spawnLocations = spawnLocations;
+        this.spectatorSpawn = spectatorSpawn;
 
         this.onEndListeners = new ArrayList<>();
     }
@@ -68,42 +72,19 @@ public final class StandardPillarsOfFortuneGame implements PillarsOfFortuneGame 
 
         this.started = true;
 
-        Iterator<Location> spawnLocIterator = this.spawnLocations.iterator();
-        for (UUID playerId : this.players) {
-            Player player = Bukkit.getPlayer(playerId);
-
-            if (player == null) {
-                this.alivePlayers.remove(playerId);
-                continue;
-            }
-
-            player.setGameMode(GameMode.SURVIVAL);
-            player.setFoodLevel(20);
-
-            PlayerInventory inventory = player.getInventory();
-            inventory.clear();
-            inventory.addItem(new ItemStack(Material.ELYTRA));
-
-            if (!spawnLocIterator.hasNext()) {
-                spawnLocIterator = this.spawnLocations.iterator();
-            }
-            player.teleport(spawnLocIterator.next());
-        }
-
         this.eventBus.subscribe(PlayerDeathEvent.class, event -> {
             Player player = event.getEntity();
-            if (!this.isInGameAlive(player)) {
-                return;
+            if (this.isInGameAlive(player)) {
+                this.alivePlayers.remove(player.getUniqueId());
+                event.setCancelled(true);
+                player.setGameMode(GameMode.SPECTATOR);
+                Messages.broadcast("<red>" + player.getName() + " has died.");
             }
-
-            this.alivePlayers.remove(player.getUniqueId());
-            player.setGameMode(GameMode.SPECTATOR);
-
-            Messages.broadcast("<red>" + player.getName() + " has died.");
         });
 
-        final int TWO_MINUTES_TICKS = 20 * 60 * 2;
-        this.taskScheduler.later(this::end, TWO_MINUTES_TICKS);
+        this.taskScheduler.later(this::end, 20 * 60 * 3);
+
+        this.scatterAndSetUpPlayers();
 
         Messages.broadcast("<green>The game has started.");
     }
@@ -121,6 +102,7 @@ public final class StandardPillarsOfFortuneGame implements PillarsOfFortuneGame 
         }
 
         player.setGameMode(GameMode.SPECTATOR);
+        player.teleport(this.spectatorSpawn);
     }
 
     @Override
@@ -173,8 +155,31 @@ public final class StandardPillarsOfFortuneGame implements PillarsOfFortuneGame 
     }
 
     @Override
-    public UUID getWorldId() {
-        return this.gameWorldId;
+    public World getWorld() {
+        return this.gameWorld;
+    }
+
+    private void scatterAndSetUpPlayers() {
+        Iterator<Location> spawnLocIterator = this.spawnLocations.iterator();
+        for (UUID playerId : this.players) {
+            Player player = Bukkit.getPlayer(playerId);
+            if (player == null) {
+                this.alivePlayers.remove(playerId);
+                continue;
+            }
+
+            player.setGameMode(GameMode.SURVIVAL);
+            player.setFoodLevel(20);
+
+            PlayerInventory inventory = player.getInventory();
+            inventory.clear();
+            inventory.addItem(new ItemStack(Material.ELYTRA));
+
+            if (!spawnLocIterator.hasNext()) {
+                spawnLocIterator = this.spawnLocations.iterator();
+            }
+            player.teleport(spawnLocIterator.next());
+        }
     }
 
     private boolean isInGameAlive(Player player) {

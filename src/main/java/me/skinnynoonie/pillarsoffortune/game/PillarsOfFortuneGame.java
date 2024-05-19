@@ -1,5 +1,6 @@
 package me.skinnynoonie.pillarsoffortune.game;
 
+import org.bukkit.World;
 import org.bukkit.entity.Player;
 
 import java.util.Set;
@@ -24,6 +25,6 @@ public interface PillarsOfFortuneGame {
 
     Set<UUID> getAlivePlayers();
 
-    UUID getWorldId();
+    World getWorld();
 
 }

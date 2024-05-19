@@ -1,25 +1,20 @@
 package me.skinnynoonie.pillarsoffortune;
 
+import me.skinnynoonie.pillarsoffortune.config.PillarsOfFortuneConfig;
 import me.skinnynoonie.pillarsoffortune.game.PillarsOfFortuneGame;
 import me.skinnynoonie.pillarsoffortune.game.standard.StandardPillarsOfFortuneGame;
 import me.skinnynoonie.pillarsoffortune.util.Messages;
 import org.apache.commons.io.FileUtils;
 import org.bukkit.Bukkit;
-import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.WorldCreator;
-import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -27,16 +22,13 @@ import java.util.stream.Collectors;
 
 public final class PillarsOfFortune extends JavaPlugin {
 
-    private static PillarsOfFortune instance;
-
     private PillarsOfFortuneGame currentGame;
-    private ConfigurationSection config;
+    private PillarsOfFortuneConfig config;
 
     @Override
     public void onEnable() {
-        this.saveDefaultConfig();
-        this.config = this.getConfig();
-        instance = this;
+        super.saveDefaultConfig();
+        this.config = new PillarsOfFortuneConfig(super.getConfig());
 
         super.getCommand("start").setExecutor(new PillarsOfFortuneGameStartCommand(this));
     }
@@ -51,33 +43,16 @@ public final class PillarsOfFortune extends JavaPlugin {
     }
 
     public void startNewGame() throws IOException {
-        String spawnWorldName = this.config.getString("spawn-world");
-        if (spawnWorldName == null) {
-            throw new IllegalStateException("can not start a new game when the spawn world does not exist");
-        }
-
-        World spawnWorld = Bukkit.getWorld(spawnWorldName);
-        if (spawnWorld == null) {
-            throw new IllegalStateException("can not start a new game when the spawn world does not exist");
-        }
-
-
-        String gameWorldName = this.config.getString("world-template-name");
-        if (gameWorldName == null) {
-            throw new IllegalStateException("config template world does not exist");
-        }
-
-        Path pathToWorldTemplate = this.getDataFolder().toPath().resolve(gameWorldName);
+        String gameWorldTemplateName = this.config.getTemplateGameWorldName();
+        Path pathToWorldTemplate = super.getDataFolder().toPath().resolve(gameWorldTemplateName);
         if (!Files.exists(pathToWorldTemplate)) {
             throw new IllegalStateException("config template world does not exist");
         }
 
         this.disposeCurrentGame();
+        FileUtils.copyDirectoryToDirectory(pathToWorldTemplate.toFile(), Bukkit.getWorldContainer().toPath().toFile());
 
-        Path pathToWorldFolder = Bukkit.getWorldContainer().toPath();
-        FileUtils.copyDirectoryToDirectory(pathToWorldTemplate.toFile(), pathToWorldFolder.toFile());
-
-        World gameWorld = new WorldCreator(gameWorldName).createWorld();
+        World gameWorld = new WorldCreator(gameWorldTemplateName).createWorld();
         if (gameWorld == null) {
             throw new RuntimeException("something went wrong when loading a world");
         }
@@ -87,19 +62,22 @@ public final class PillarsOfFortune extends JavaPlugin {
         this.currentGame = new StandardPillarsOfFortuneGame(
                 this,
                 playerIds,
-                gameWorld.getUID(),
-                Arrays.asList(new Location(gameWorld, 0, 100, 0))
+                gameWorld,
+                this.config.getGameWorldSpawns(),
+                this.config.getSpectatorSpawnLocation()
         );
 
         this.currentGame.onEnd(game -> {
-            game.getPlayers()
-                    .stream()
-                    .map(Bukkit::getPlayer)
-                    .filter(Objects::nonNull)
-                    .forEach(player -> player.teleport(new Location(spawnWorld, 0, 50, 0)));
+            for (Player player : game.getWorld().getPlayers()) {
+                player.teleport(this.config.getSpawnLocation());
+            }
         });
 
-        Bukkit.getScheduler().runTaskLater(this, this.currentGame::start, 40);
+        this.currentGame.start();
+    }
+
+    public Optional<PillarsOfFortuneGame> getCurrentGame() {
+        return Optional.ofNullable(this.currentGame);
     }
 
     private void disposeCurrentGame() throws IOException {
@@ -108,10 +86,7 @@ public final class PillarsOfFortune extends JavaPlugin {
         }
 
         this.currentGame.dispose();
-        World gameWorld = Bukkit.getWorld(this.currentGame.getWorldId());
-        if (gameWorld == null) {
-            return;
-        }
+        World gameWorld = this.currentGame.getWorld();
 
         gameWorld.getPlayers().forEach(player -> player.kick(Messages.text("<red>World unloading!")));
         Bukkit.unloadWorld(gameWorld, false);
@@ -119,14 +94,6 @@ public final class PillarsOfFortune extends JavaPlugin {
         FileUtils.deleteDirectory(pathToGameWorldFolder.toFile());
 
         this.currentGame = null;
-    }
-
-    public Optional<PillarsOfFortuneGame> getCurrentGame() {
-        return Optional.ofNullable(this.currentGame);
-    }
-
-    public static PillarsOfFortune getInstance() {
-        return instance;
     }
 
 }

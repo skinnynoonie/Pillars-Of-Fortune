@@ -1,2 +1,6 @@
-spawn-world: "world"
-world-template-name: "world-game"
+spawn-world-name: "world"
+spawn-world-location: "0, 0, 0, 180, -90"
+template-game-world-name: "world-game"
+game-world-spawn-locations:
+  - "0, 100, 0, 180, 90"
+game-world-spectator-spawn-location: "0, 150, 0, 0, -90"
