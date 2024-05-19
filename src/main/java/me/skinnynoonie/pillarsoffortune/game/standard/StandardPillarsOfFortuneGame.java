@@ -2,11 +2,11 @@ package me.skinnynoonie.pillarsoffortune.game.standard;
 
 import me.skinnynoonie.pillarsoffortune.PillarsOfFortune;
 import me.skinnynoonie.pillarsoffortune.game.PillarsOfFortuneGame;
-import me.skinnynoonie.pillarsoffortune.game.PillarsOfFortuneSpectatorManager;
 import me.skinnynoonie.pillarsoffortune.util.BukkitEventBus;
 import me.skinnynoonie.pillarsoffortune.util.BukkitTaskScheduler;
 import me.skinnynoonie.pillarsoffortune.util.Messages;
 import org.bukkit.Bukkit;
+import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -14,11 +14,14 @@ import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 public final class StandardPillarsOfFortuneGame implements PillarsOfFortuneGame {
 
@@ -26,19 +29,18 @@ public final class StandardPillarsOfFortuneGame implements PillarsOfFortuneGame 
     private final BukkitEventBus eventBus;
     private final BukkitTaskScheduler taskScheduler;
 
-    private final PillarsOfFortuneSpectatorManager spectatorManager;
-
     private final Set<UUID> players;
     private final Set<UUID> alivePlayers;
     private boolean started;
     private boolean ended;
 
     private final UUID gameWorldId;
-    private List<Location> spawnLocations;
+    private final List<Location> spawnLocations;
+
+    private final List<Consumer<PillarsOfFortuneGame>> onEndListeners;
 
     public StandardPillarsOfFortuneGame(
             PillarsOfFortune pillarsOfFortune,
-            PillarsOfFortuneSpectatorManager spectatorManager,
             Set<UUID> players,
             UUID gameWorldId,
             List<Location> spawnLocations
@@ -47,8 +49,6 @@ public final class StandardPillarsOfFortuneGame implements PillarsOfFortuneGame 
         this.eventBus = new BukkitEventBus(pillarsOfFortune);
         this.taskScheduler = new BukkitTaskScheduler(pillarsOfFortune);
 
-        this.spectatorManager = spectatorManager;
-
         this.players = new HashSet<>(players);
         this.alivePlayers = new HashSet<>(players);
         this.started = false;
@@ -56,6 +56,8 @@ public final class StandardPillarsOfFortuneGame implements PillarsOfFortuneGame 
 
         this.gameWorldId = gameWorldId;
         this.spawnLocations = spawnLocations;
+
+        this.onEndListeners = new ArrayList<>();
     }
 
     @Override
@@ -66,6 +68,7 @@ public final class StandardPillarsOfFortuneGame implements PillarsOfFortuneGame 
 
         this.started = true;
 
+        Iterator<Location> spawnLocIterator = this.spawnLocations.iterator();
         for (UUID playerId : this.players) {
             Player player = Bukkit.getPlayer(playerId);
 
@@ -74,9 +77,17 @@ public final class StandardPillarsOfFortuneGame implements PillarsOfFortuneGame 
                 continue;
             }
 
+            player.setGameMode(GameMode.SURVIVAL);
+            player.setFoodLevel(20);
+
             PlayerInventory inventory = player.getInventory();
             inventory.clear();
             inventory.addItem(new ItemStack(Material.ELYTRA));
+
+            if (!spawnLocIterator.hasNext()) {
+                spawnLocIterator = this.spawnLocations.iterator();
+            }
+            player.teleport(spawnLocIterator.next());
         }
 
         this.eventBus.subscribe(PlayerDeathEvent.class, event -> {
@@ -86,19 +97,19 @@ public final class StandardPillarsOfFortuneGame implements PillarsOfFortuneGame 
             }
 
             this.alivePlayers.remove(player.getUniqueId());
-            this.spectatorManager.setSpectator(player);
+            player.setGameMode(GameMode.SPECTATOR);
 
-            String deathMessage = "<red>" + player.getName() + " has died.";
-            Bukkit.broadcast(Messages.text(deathMessage));
+            Messages.broadcast("<red>" + player.getName() + " has died.");
         });
 
         final int TWO_MINUTES_TICKS = 20 * 60 * 2;
         this.taskScheduler.later(this::end, TWO_MINUTES_TICKS);
+
+        Messages.broadcast("<green>The game has started.");
     }
 
     public void end() {
-        String endMessage = "<yellow>Game ended!";
-        Bukkit.broadcast(Messages.text(endMessage));
+        Messages.broadcast("<yellow>Game ended!");
 
         this.dispose();
     }
@@ -109,7 +120,7 @@ public final class StandardPillarsOfFortuneGame implements PillarsOfFortuneGame 
             throw new IllegalStateException("game has not started or ended already");
         }
 
-        this.spectatorManager.setSpectator(player);
+        player.setGameMode(GameMode.SPECTATOR);
     }
 
     @Override
@@ -118,24 +129,25 @@ public final class StandardPillarsOfFortuneGame implements PillarsOfFortuneGame 
             throw new IllegalStateException("game has not started or ended already");
         }
 
-        this.spectatorManager.removeSpectator(player);
-
         if (!this.isInGameAlive(player)) {
             return;
         }
 
         this.alivePlayers.remove(player.getUniqueId());
 
-        String disconnectMessage = "<red>" + player.getName() + " has quit.";
-        Bukkit.broadcast(Messages.text(disconnectMessage));
+        Messages.broadcast("<red>" + player.getName() + " has quit.");
     }
 
     @Override
     public void dispose() {
+        if (this.ended) {
+            return;
+        }
+
         this.ended = true;
+        this.runOnEndListeners();
         this.eventBus.dispose();
         this.taskScheduler.dispose();
-        this.spectatorManager.dispose();
         this.players.clear();
         this.alivePlayers.clear();
     }
@@ -143,6 +155,11 @@ public final class StandardPillarsOfFortuneGame implements PillarsOfFortuneGame 
     @Override
     public boolean isActive() {
         return this.started && !this.ended;
+    }
+
+    @Override
+    public void onEnd(Consumer<PillarsOfFortuneGame> onEndListener) {
+        this.onEndListeners.add(onEndListener);
     }
 
     @Override
@@ -155,8 +172,23 @@ public final class StandardPillarsOfFortuneGame implements PillarsOfFortuneGame 
         return Collections.unmodifiableSet(this.alivePlayers);
     }
 
+    @Override
+    public UUID getWorldId() {
+        return this.gameWorldId;
+    }
+
     private boolean isInGameAlive(Player player) {
         return this.alivePlayers.contains(player.getUniqueId());
+    }
+
+    private void runOnEndListeners() {
+        for (Consumer<PillarsOfFortuneGame> listener : this.onEndListeners) {
+            try {
+                listener.accept(this);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
     }
 
 }

@@ -51,7 +51,7 @@ public final class BukkitEventBus implements Listener {
     }
 
     /**
-     * Unregisters all listeners that were registered using this event bus.
+     * Unregisters all listeners registered using this event bus.
      */
     public void dispose() {
         HandlerList.unregisterAll(this);

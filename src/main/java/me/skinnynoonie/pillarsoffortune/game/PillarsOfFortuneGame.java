@@ -4,6 +4,7 @@ import org.bukkit.entity.Player;
 
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 public interface PillarsOfFortuneGame {
 
@@ -17,8 +18,12 @@ public interface PillarsOfFortuneGame {
 
     boolean isActive();
 
+    void onEnd(Consumer<PillarsOfFortuneGame> onEndListener);
+
     Set<UUID> getPlayers();
 
     Set<UUID> getAlivePlayers();
+
+    UUID getWorldId();
 
 }

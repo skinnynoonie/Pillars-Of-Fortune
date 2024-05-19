@@ -1,7 +1,10 @@
 package me.skinnynoonie.pillarsoffortune.util;
 
+import net.kyori.adventure.audience.Audience;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
+import org.bukkit.Bukkit;
+import org.bukkit.command.CommandSender;
 
 public final class Messages {
 
@@ -13,6 +16,14 @@ public final class Messages {
         }
 
         return formattedMessage;
+    }
+
+    public static void broadcast(String message, String... messages) {
+        Bukkit.broadcast(text(message, messages));
+    }
+
+    public static void send(Audience audience, String message, String... messages) {
+        audience.sendMessage(text(message, messages));
     }
 
     private Messages() {

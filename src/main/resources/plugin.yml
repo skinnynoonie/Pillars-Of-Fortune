@@ -1,4 +1,7 @@
 name: PillarsOfFortune
 version: '${project.version}'
-main: me.skinnynoonie.toweroffortune.PillarsOfFortune
+main: me.skinnynoonie.pillarsoffortune.PillarsOfFortune
 api-version: '1.20'
+commands:
+  start:
+    description: "Start a new Pillars Of Fortune game."
