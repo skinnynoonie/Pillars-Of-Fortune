@@ -1,7 +1,6 @@
 package me.skinnynoonie.pillarsoffortune.config;
 
 import org.bukkit.Location;
-import org.bukkit.World;
 import org.bukkit.configuration.ConfigurationSection;
 
 import java.util.List;
